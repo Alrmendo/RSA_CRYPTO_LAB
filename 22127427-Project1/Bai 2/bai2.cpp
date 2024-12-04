@@ -105,7 +105,7 @@ struct BigInt
             num_sign = -1;
             value = -value;
         }
-        for(; value > 0; value = value / BASE)
+        for (; value > 0; value = value / BASE)
         {
             digits.push_back(value % BASE);
         }
@@ -519,14 +519,14 @@ struct BigInt
         vector<long long> c = karatsubaMultiply(a, b);
 
         BigInt result;
-        result.num_sign = this->num_sign * other.num_sign; 
+        result.num_sign = this->num_sign * other.num_sign;
         long long carry = 0;
 
         for (int i = 0; i < (int)c.size(); ++i)
         {
             long long current = c[i] + carry;
-            result.digits.push_back((int)(current % 1000000)); 
-            carry = current / 1000000;                         
+            result.digits.push_back((int)(current % 1000000));
+            carry = current / 1000000;
         }
 
         result.digits = convert_base(result.digits, 6, BASE_digits);
@@ -534,3 +534,106 @@ struct BigInt
         return result;
     }
 };
+
+struct GCDResult {
+    BigInt gcd;
+    BigInt x;
+    BigInt y;
+};
+
+// Hàm tính gcd mở rộng
+GCDResult gcd_extended(const BigInt &a, const BigInt &b) {
+    if (b.isZero()) {
+        GCDResult result = {a, BigInt(1), BigInt(0)};
+        return result;
+    }
+
+    GCDResult nextResult = gcd_extended(b, a % b);
+    GCDResult result;
+    result.gcd = nextResult.gcd;
+    result.x = nextResult.y;
+    result.y = nextResult.x - (a / b) * nextResult.y;
+
+    return result;
+}
+
+// Hàm tính nghịch đảo modular
+BigInt mod_inverse(const BigInt &e, const BigInt &phi) {
+    GCDResult result = gcd_extended(e, phi);
+
+    if (result.gcd != BigInt(1)) {
+        throw invalid_argument("Modular inverse does not exist");
+    }
+
+    return (result.x % phi + phi) % phi; // Đảm bảo kết quả luôn dương
+}
+
+// Hàm tìm giá trị nhỏ hơn giữa hai BigInt
+BigInt min(const BigInt &a, const BigInt &b) {
+    return (a < b) ? a : b;
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        cerr << "Usage: " << argv[0] << " <input_file> <output_file>" << endl;
+        return 1;
+    }
+
+    string inputFile = argv[1];
+    string outputFile = argv[2];
+
+    // Đọc dữ liệu từ file input
+    ifstream fin(inputFile);
+    if (!fin.is_open()) {
+        cerr << "Error: Unable to open input file." << endl;
+        return 1;
+    }
+
+    string pStr, qStr, eStr;
+    getline(fin, pStr);
+    getline(fin, qStr);
+    getline(fin, eStr);
+    fin.close();
+
+    // Chuyển chuỗi từ file input thành BigInt
+    BigInt p(pStr), q(qStr), e(eStr);
+
+    // Kiểm tra điều kiện e < min(p, q)
+    BigInt one = 1;
+    BigInt pMinus1 = p - one;
+    BigInt qMinus1 = q - one;
+
+    if (e >= min(p, q)) {
+        ofstream fout(outputFile);
+        fout << "-1" << endl;
+        fout.close();
+        return 1;
+    }
+
+    // Tính phi(n) = (p - 1)(q - 1)
+    BigInt phi = pMinus1 * qMinus1;
+
+    // Tính khóa bí mật d
+    try {
+        BigInt d = mod_inverse(e, phi); // Tính nghịch đảo modular của e theo phi(n)
+
+        // Ghi kết quả vào file output
+        ofstream fout(outputFile);
+        if (!fout.is_open()) {
+            cerr << "Error: Unable to open output file." << endl;
+            return 1;
+        }
+
+        fout << d << endl;
+        fout.close();
+    } catch (const invalid_argument &ex) {
+        cerr << "Error: " << ex.what() << endl;
+
+        ofstream fout(outputFile);
+        fout << "-1" << endl;
+        fout.close();
+        return 1;
+    }
+
+    return 0;
+}
