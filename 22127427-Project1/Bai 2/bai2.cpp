@@ -1,580 +1,573 @@
 #include <iostream>
 #include <fstream>
+#include <algorithm>
 #include <vector>
 #include <string>
-#include <random>
-#include <sstream>
 #include <iomanip>
-#include <cmath>
+#include <stdexcept>
+#include <sstream>
+#include <tuple>
 
 using namespace std;
 
-const int BASE = 1000000000; // 10^9
-const int BASE_digits = 9;
+const uint32_t BASE = 1000000000;
 
 struct BigInt
 {
-    vector<int> digits;
-    int num_sign;
+    bool sign;
+    vector<uint32_t> digit;
+};
 
-    BigInt() : num_sign(1) {}
+struct GCDResult
+{
+    BigInt gcd; // Giá trị GCD
+    BigInt x;   // Hệ số x
+    BigInt y;   // Hệ số y
+};
 
-    BigInt(long long value)
+uint32_t convertHex(char hex)
+{
+    if (isdigit(hex))
     {
-        *this = value;
+        return hex - '0';
     }
 
-    BigInt(const string &str)
+    if (isxdigit(hex))
     {
-        read(str);
+        return toupper(hex) - 'A' + 10;
+    }
+    throw invalid_argument("Invalid hexadecimal character");
+}
+
+bool isZero(const BigInt &num)
+{
+    return num.digit.empty() || (num.digit.size() == 1 && num.digit[0] == 0);
+}
+
+bool isOne(const BigInt &num)
+{
+    return num.digit.size() == 1 && num.digit[0] == 1 && num.sign == true;
+}
+
+BigInt shiftLeft(const BigInt &num, size_t positions)
+{
+    if (num.digit.empty() || (num.digit.size() == 1 && num.digit[0] == 0))
+    {
+        return num;
     }
 
-    void trim()
+    BigInt result = num;
+    result.digit.insert(result.digit.begin(), positions, 0);
+    return result;
+}
+
+void addDigit(BigInt &number, uint32_t digit)
+{
+    long long int carry = digit;
+    for (size_t i = 0; i < number.digit.size(); ++i)
     {
-        while (!digits.empty() && digits.back() == 0)
+        long long int sum = static_cast<long long int>(number.digit[i]) + carry;
+        number.digit[i] = sum % BASE;
+        carry = sum / BASE;
+        if (carry == 0)
+            return;
+    }
+    if (carry > 0)
+    {
+        number.digit.push_back(static_cast<uint32_t>(carry));
+    }
+}
+
+void multiply16(BigInt &number)
+{
+    long long int carry = 0;
+    for (size_t i = 0; i < number.digit.size(); ++i)
+    {
+        long long int result = static_cast<long long int>(number.digit[i]) * 16 + carry;
+        number.digit[i] = result % BASE;
+        carry = result / BASE;
+    }
+    if (carry > 0)
+    {
+        number.digit.push_back(static_cast<uint32_t>(carry));
+    }
+}
+
+BigInt hexToInt(const string &hex)
+{
+    BigInt result;
+    result.sign = true;
+    result.digit.push_back(0);
+
+    for (size_t i = 0; i < hex.size(); ++i)
+    {
+        multiply16(result);
+        addDigit(result, convertHex(hex[i]));
+    }
+    return result;
+}
+
+int compare(const BigInt &a, const BigInt &b)
+{
+    if (a.sign != b.sign)
+    {
+        if (a.sign)
         {
-            digits.pop_back();
-        }
-
-        if (digits.empty())
-        {
-            num_sign = 1;
-        }
-    }
-
-    void read(const string &input)
-    {
-        num_sign = 1;
-        digits.clear();
-
-        int current_position = 0;
-
-        while (current_position < (int)input.size() && (input[current_position] == '-' || input[current_position] == '+'))
-        {
-            if (input[current_position] == '-')
-            {
-                num_sign = -num_sign;
-            }
-            ++current_position;
-        }
-
-        for (int i = input.size() - 1; i >= current_position; i -= BASE_digits)
-        {
-            int block_value = 0;
-            for (int j = max(current_position, i - BASE_digits + 1); j <= i; ++j)
-            {
-                block_value = block_value * 10 + (input[j] - '0');
-            }
-            digits.push_back(block_value);
-        }
-
-        trim();
-    }
-
-    void operator+=(const BigInt &value)
-    {
-        *this = *this + value;
-    }
-
-    void operator-=(const BigInt &value)
-    {
-        *this = *this - value;
-    }
-
-    void operator*=(const BigInt &value)
-    {
-        *this = *this * value;
-    }
-
-    void operator/=(const BigInt &value)
-    {
-        *this = *this / value;
-    }
-
-    void operator=(const BigInt &value)
-    {
-        num_sign = value.num_sign;
-        digits = value.digits;
-    }
-
-    void operator=(long long value)
-    {
-        num_sign = 1;
-        if (value < 0)
-        {
-            num_sign = -1;
-            value = -value;
-        }
-        for (; value > 0; value = value / BASE)
-        {
-            digits.push_back(value % BASE);
-        }
-    }
-
-    bool operator<(const BigInt &value) const
-    {
-        if (num_sign != value.num_sign)
-            return num_sign < value.num_sign;
-
-        if (digits.size() != value.digits.size())
-            return digits.size() * num_sign < value.digits.size() * value.num_sign;
-
-        for (int i = digits.size() - 1; i >= 0; --i)
-        {
-            if (digits[i] != value.digits[i])
-                return digits[i] * num_sign < value.digits[i] * num_sign;
-        }
-
-        return false;
-    }
-
-    bool operator>(const BigInt &value) const
-    {
-        return value < *this;
-    }
-
-    bool operator<=(const BigInt &value) const
-    {
-        return !(value < *this);
-    }
-
-    bool operator>=(const BigInt &value) const
-    {
-        return !(*this < value);
-    }
-
-    bool operator==(const BigInt &value) const
-    {
-        return !(*this < value) && !(value < *this);
-    }
-
-    bool operator!=(const BigInt &value) const
-    {
-        return *this < value || value < *this;
-    }
-
-    BigInt operator+(const BigInt &value) const
-    {
-        if (num_sign == value.num_sign)
-        {
-            BigInt result = value;
-
-            int carry = 0;
-            int max_size = max(digits.size(), value.digits.size());
-
-            for (int i = 0; i < max_size || carry; ++i)
-            {
-                if (i == (int)result.digits.size())
-                    result.digits.push_back(0);
-
-                result.digits[i] += carry + (i < (int)digits.size() ? digits[i] : 0);
-
-                carry = result.digits[i] >= BASE;
-                if (carry)
-                    result.digits[i] -= BASE;
-            }
-
-            return result;
-        }
-
-        return *this - (-value);
-    }
-
-    BigInt operator-(const BigInt &value) const
-    {
-        if (num_sign == value.num_sign)
-        {
-            if (abs() >= value.abs())
-            {
-                BigInt result = *this;
-
-                int carry = 0;
-                for (int i = 0; i < (int)value.digits.size() || carry; ++i)
-                {
-                    result.digits[i] -= carry + (i < (int)value.digits.size() ? value.digits[i] : 0);
-                    carry = result.digits[i] < 0;
-                    if (carry)
-                        result.digits[i] += BASE;
-                }
-
-                result.trim();
-                return result;
-            }
-
-            return -(value - *this);
-        }
-
-        return *this + (-value);
-    }
-
-    BigInt operator*(int value) const
-    {
-        BigInt result = *this;
-        result *= value;
-        return result;
-    }
-
-    BigInt operator-() const
-    {
-        BigInt result = *this;
-        result.num_sign = -num_sign;
-        return result;
-    }
-
-    BigInt abs() const
-    {
-        BigInt result = *this;
-        result.num_sign = 1;
-        return result;
-    }
-
-    BigInt operator/(int value) const
-    {
-        BigInt result = *this;
-        result /= value;
-        return result;
-    }
-
-    BigInt operator/(const BigInt &divisor) const
-    {
-        return divmod(*this, divisor).first;
-    }
-
-    BigInt operator%(const BigInt &divisor) const
-    {
-        return divmod(*this, divisor).second;
-    }
-
-    void operator*=(int value)
-    {
-        if (value < 0)
-        {
-            num_sign = -num_sign;
-            value = -value;
-        }
-
-        int carry = 0;
-        for (int i = 0; i < (int)digits.size() || carry; ++i)
-        {
-            if (i == (int)digits.size())
-            {
-                digits.push_back(0);
-            }
-
-            long long current_value = (long long)digits[i] * value + carry;
-
-            carry = (int)(current_value / BASE);
-            digits[i] = (int)(current_value % BASE);
-        }
-
-        trim();
-    }
-
-    void operator/=(int value)
-    {
-        if (value < 0)
-        {
-            num_sign = -num_sign;
-            value = -value;
-        }
-
-        long long remainder = 0;
-        for (int i = digits.size() - 1; i >= 0; --i)
-        {
-            long long current_value = digits[i] + remainder * (long long)BASE;
-            digits[i] = (int)(current_value / value);
-            remainder = (int)(current_value % value);
-        }
-
-        trim();
-    }
-
-    int operator%(int value) const
-    {
-        if (value < 0)
-            value = -value;
-
-        int remainder = 0;
-        for (int i = digits.size() - 1; i >= 0; --i)
-        {
-            remainder = (digits[i] + remainder * (long long)BASE) % value;
-        }
-
-        return remainder * num_sign;
-    }
-
-    bool isZero() const
-    {
-        return digits.empty() || (digits.size() == 1 && digits[0] == 0);
-    }
-
-    friend pair<BigInt, BigInt> divmod(const BigInt &dividend, const BigInt &divisor)
-    {
-        int normalization_factor = BASE / (divisor.digits.back() + 1);
-        BigInt normalized_dividend = dividend.abs() * normalization_factor;
-        BigInt normalized_divisor = divisor.abs() * normalization_factor;
-        BigInt quotient, remainder;
-        quotient.digits.resize(normalized_dividend.digits.size());
-
-        for (int i = normalized_dividend.digits.size() - 1; i >= 0; --i)
-        {
-            remainder *= BASE;
-            remainder += normalized_dividend.digits[i];
-
-            int high_digit = remainder.digits.size() <= normalized_divisor.digits.size() ? 0 : remainder.digits[normalized_divisor.digits.size()];
-            int next_high_digit = remainder.digits.size() <= normalized_divisor.digits.size() - 1 ? 0 : remainder.digits[normalized_divisor.digits.size() - 1];
-            int estimated_quotient = ((long long)BASE * high_digit + next_high_digit) / normalized_divisor.digits.back();
-
-            remainder -= normalized_divisor * estimated_quotient;
-            while (remainder < 0)
-            {
-                remainder += normalized_divisor;
-                --estimated_quotient;
-            }
-
-            quotient.digits[i] = estimated_quotient;
-        }
-
-        quotient.num_sign = dividend.num_sign * divisor.num_sign;
-        remainder.num_sign = dividend.num_sign;
-        quotient.trim();
-        remainder.trim();
-
-        remainder /= normalization_factor;
-
-        return make_pair(quotient, remainder);
-    }
-
-    long long toLongLong() const
-    {
-        long long result = 0;
-        for (int i = digits.size() - 1; i >= 0; --i)
-        {
-            result = result * BASE + digits[i];
-        }
-        return result * num_sign;
-    }
-
-    friend BigInt gcd(const BigInt &x, const BigInt &y)
-    {
-        return y.isZero() ? x : gcd(y, x % y);
-    }
-
-    friend BigInt lcm(const BigInt &x, const BigInt &y)
-    {
-        return x / gcd(x, y) * y;
-    }
-
-    friend istream &operator>>(istream &stream, BigInt &value)
-    {
-        string input;
-        stream >> input;
-        value.read(input);
-        return stream;
-    }
-
-    friend ostream &operator<<(ostream &stream, const BigInt &value)
-    {
-        if (value.num_sign == -1)
-        {
-            stream << '-';
-        }
-
-        if (value.digits.empty())
-        {
-            stream << 0;
+            return 1;
         }
         else
         {
-            stream << value.digits.back();
+            return -1;
         }
-
-        for (int i = (int)value.digits.size() - 2; i >= 0; --i)
-        {
-            stream << setw(BASE_digits) << setfill('0') << value.digits[i];
-        }
-
-        return stream;
     }
 
-    // Hàm nhân hai vector số lớn bằng thuật toán Karatsuba
-    static vector<long long> karatsubaMultiply(const vector<long long> &a, const vector<long long> &b)
+    if (a.digit.size() != b.digit.size())
     {
-        int n = a.size();
-        vector<long long> result(n + n, 0);
-
-        if (n <= 32)
+        if (a.digit.size() > b.digit.size())
         {
-            for (int i = 0; i < n; ++i)
+            return 1;
+        }
+        else
+        {
+            return -1;
+        }
+    }
+
+    for (size_t i = a.digit.size(); i-- > 0;)
+    {
+        if (a.digit[i] != b.digit[i])
+        {
+            if (a.digit[i] > b.digit[i])
             {
-                for (int j = 0; j < n; ++j)
-                {
-                    result[i + j] += a[i] * b[j];
-                }
+                return 1;
             }
-            return result;
-        }
-
-        int half = n / 2;
-        vector<long long> a1(a.begin(), a.begin() + half);
-        vector<long long> a2(a.begin() + half, a.end());
-        vector<long long> b1(b.begin(), b.begin() + half);
-        vector<long long> b2(b.begin() + half, b.end());
-
-        vector<long long> a1b1 = karatsubaMultiply(a1, b1);
-        vector<long long> a2b2 = karatsubaMultiply(a2, b2);
-
-        for (int i = 0; i < half; ++i)
-        {
-            a2[i] += a1[i];
-            b2[i] += b1[i];
-        }
-        vector<long long> r = karatsubaMultiply(a2, b2);
-
-        for (int i = 0; i < (int)a1b1.size(); ++i)
-        {
-            r[i] -= a1b1[i];
-        }
-        for (int i = 0; i < (int)a2b2.size(); ++i)
-        {
-            r[i] -= a2b2[i];
-        }
-
-        // Kết hợp kết quả
-        for (int i = 0; i < (int)r.size(); ++i)
-        {
-            result[i + half] += r[i];
-        }
-        for (int i = 0; i < (int)a1b1.size(); ++i)
-        {
-            result[i] += a1b1[i];
-        }
-        for (int i = 0; i < (int)a2b2.size(); ++i)
-        {
-            result[i + n] += a2b2[i];
-        }
-
-        return result;
-    }
-
-    static vector<int> convert_base(const vector<int> &input, int old_digits, int new_digits)
-    {
-        vector<long long> powers_of_ten(max(old_digits, new_digits) + 1);
-        for (int i = 1; i <= powers_of_ten.size(); ++i)
-        {
-            powers_of_ten[i] = powers_of_ten[i - 1] * 10;
-        }
-
-        vector<int> result;
-        long long current_value = 0;
-        int current_digits = 0;
-
-        for (int i = 0; i < (int)input.size(); ++i)
-        {
-            current_value += input[i] * powers_of_ten[current_digits];
-            current_digits += old_digits;
-
-            while (current_digits >= new_digits)
+            else
             {
-                result.push_back((int)(current_value % powers_of_ten[new_digits]));
-                current_value /= powers_of_ten[new_digits];
-                current_digits -= new_digits;
+                return -1;
             }
         }
-
-        if (current_value > 0)
-        {
-            result.push_back((int)current_value);
-        }
-
-        while (!result.empty() && result.back() == 0)
-        {
-            result.pop_back();
-        }
-
-        return result;
     }
 
-    BigInt operator*(const BigInt &other) const
+    return 0;
+}
+
+BigInt min(const BigInt &a, const BigInt &b)
+{
+    int comparisonResult = compare(a, b);
+
+    if (comparisonResult < 0)
     {
-        vector<int> a6 = convert_base(this->digits, BASE_digits, 6);
-        vector<int> b6 = convert_base(other.digits, BASE_digits, 6);
-        vector<long long> a(a6.begin(), a6.end());
-        vector<long long> b(b6.begin(), b6.end());
-
-        while (a.size() < b.size())
-        {
-            a.push_back(0);
-        }
-        while (b.size() < a.size())
-        {
-            b.push_back(0);
-        }
-        while (a.size() & (a.size() - 1))
-        {
-            a.push_back(0);
-            b.push_back(0);
-        }
-
-        vector<long long> c = karatsubaMultiply(a, b);
-
-        BigInt result;
-        result.num_sign = this->num_sign * other.num_sign;
-        long long carry = 0;
-
-        for (int i = 0; i < (int)c.size(); ++i)
-        {
-            long long current = c[i] + carry;
-            result.digits.push_back((int)(current % 1000000));
-            carry = current / 1000000;
-        }
-
-        result.digits = convert_base(result.digits, 6, BASE_digits);
-        result.trim();
-        return result;
+        return a;
     }
-};
 
-struct GCDResult {
-    BigInt gcd;
-    BigInt x;
-    BigInt y;
-};
+    return b;
+}
 
-// Hàm tính gcd mở rộng
-GCDResult gcd_extended(const BigInt &a, const BigInt &b) {
-    if (b.isZero()) {
-        GCDResult result = {a, BigInt(1), BigInt(0)};
+// khai báo trước
+BigInt add(const BigInt &a, const BigInt &b);
+
+BigInt subtract(const BigInt &a, const BigInt &b)
+{
+    BigInt result;
+
+    // Trường hợp cả hai số đều âm
+    if (!a.sign && !b.sign)
+    {
+        // (-a) - (-b) tương đương với b - a
+        return subtract(b, a);
+    }
+
+    // Trường hợp dấu khác nhau: a - (-b) tương đương a + b
+    if (a.sign != b.sign)
+    {
+        BigInt b_positive = b;
+        b_positive.sign = a.sign;
+        return add(a, b_positive);
+    }
+
+    // Nếu cả hai số có cùng dấu, so sánh giá trị tuyệt đối
+    if (compare(a, b) < 0)
+    {
+        result = subtract(b, a);
+        result.sign = !a.sign;
         return result;
     }
 
-    GCDResult nextResult = gcd_extended(b, a % b);
-    GCDResult result;
-    result.gcd = nextResult.gcd;
-    result.x = nextResult.y;
-    result.y = nextResult.x - (a / b) * nextResult.y;
+    result = a;
+    int64_t borrow = 0;
+
+    for (size_t i = 0; i < b.digit.size() || borrow > 0; ++i)
+    {
+        int64_t sub = (i < b.digit.size() ? b.digit[i] : 0) + borrow;
+        if (result.digit[i] < sub)
+        {
+            result.digit[i] += BASE - sub;
+            borrow = 1;
+        }
+        else
+        {
+            result.digit[i] -= sub;
+            borrow = 0;
+        }
+    }
+
+    while (result.digit.size() > 1 && result.digit.back() == 0)
+    {
+        result.digit.pop_back();
+    }
 
     return result;
 }
 
-// Hàm tính nghịch đảo modular
-BigInt mod_inverse(const BigInt &e, const BigInt &phi) {
-    GCDResult result = gcd_extended(e, phi);
+BigInt add(const BigInt &a, const BigInt &b)
+{
+    BigInt result;
 
-    if (result.gcd != BigInt(1)) {
-        throw invalid_argument("Modular inverse does not exist");
+    // Trường hợp cả hai số cùng dấu
+    if (a.sign == b.sign)
+    {
+        result.sign = a.sign;
+        result.digit.clear();
+
+        long long int carry = 0;
+        size_t maxSize = max(a.digit.size(), b.digit.size());
+
+        for (size_t i = 0; i < maxSize || carry > 0; ++i)
+        {
+            long long int sum = carry;
+            if (i < a.digit.size())
+            {
+                sum += a.digit[i];
+            }
+            if (i < b.digit.size())
+            {
+                sum += b.digit[i];
+            }
+
+            result.digit.push_back(sum % BASE);
+            carry = sum / BASE;
+        }
+
+        return result;
+    }
+    else
+    {
+        if (!a.sign)
+        {
+            // a âm, b dương => b - |a|
+            BigInt absA = a;
+            absA.sign = true;
+            return subtract(b, absA);
+        }
+        else
+        {
+            // a dương, b âm => a - |b|
+            BigInt absB = b;
+            absB.sign = true;
+            return subtract(a, absB);
+        }
+    }
+}
+
+BigInt karatsubaMultiply(const BigInt &a, const BigInt &b)
+{
+    // Nếu một trong hai số là 0, trả về 0
+    if (a.digit.empty() || b.digit.empty() || (a.digit.size() == 1 && a.digit[0] == 0) || (b.digit.size() == 1 && b.digit[0] == 0))
+    {
+        BigInt zero;
+        zero.sign = true;
+        zero.digit.push_back(0);
+        return zero;
     }
 
-    return (result.x % phi + phi) % phi; // Đảm bảo kết quả luôn dương
+    // Trường hợp cơ bản: nếu số chữ số nhỏ, dùng nhân trực tiếp
+    if (a.digit.size() <= 64 || b.digit.size() <= 64)
+    {
+        BigInt result;
+        result.sign = (a.sign == b.sign);
+        result.digit.resize(a.digit.size() + b.digit.size(), 0);
+
+        for (size_t i = 0; i < a.digit.size(); ++i)
+        {
+            long long int carry = 0;
+            for (size_t j = 0; j < b.digit.size() || carry > 0; ++j)
+            {
+                long long int product = result.digit[i + j] + carry;
+                if (j < b.digit.size())
+                {
+                    product += static_cast<long long int>(a.digit[i]) * b.digit[j];
+                }
+                result.digit[i + j] = product % BASE;
+                carry = product / BASE;
+            }
+        }
+
+        while (result.digit.size() > 1 && result.digit.back() == 0)
+        {
+            result.digit.pop_back();
+        }
+        return result;
+    }
+
+    // Chia số thành hai nửa
+    size_t half = std::max(a.digit.size(), b.digit.size()) / 2;
+
+    BigInt lowA, highA;
+    lowA.sign = true;
+    highA.sign = true;
+    for (size_t i = 0; i < half && i < a.digit.size(); ++i)
+    {
+        lowA.digit.push_back(a.digit[i]);
+    }
+    for (size_t i = half; i < a.digit.size(); ++i)
+    {
+        highA.digit.push_back(a.digit[i]);
+    }
+
+    BigInt lowB, highB;
+    lowB.sign = true;
+    highB.sign = true;
+    for (size_t i = 0; i < half && i < b.digit.size(); ++i)
+    {
+        lowB.digit.push_back(b.digit[i]);
+    }
+    for (size_t i = half; i < b.digit.size(); ++i)
+    {
+        highB.digit.push_back(b.digit[i]);
+    }
+
+    // Tính tích bằng đệ quy
+    BigInt z0 = karatsubaMultiply(lowA, lowB);
+    BigInt z1 = karatsubaMultiply(add(lowA, highA), add(lowB, highB));
+    BigInt z2 = karatsubaMultiply(highA, highB);
+
+    // Kết hợp các thành phần
+    BigInt shiftedZ2 = shiftLeft(z2, 2 * half);
+    BigInt shiftedMiddle = shiftLeft(subtract(z1, add(z2, z0)), half);
+    BigInt result = add(add(shiftedZ2, shiftedMiddle), z0);
+
+    // Gán dấu cho kết quả
+    result.sign = (a.sign == b.sign);
+
+    // Loại bỏ các chữ số 0 không cần thiết
+    while (result.digit.size() > 1 && result.digit.back() == 0)
+    {
+        result.digit.pop_back();
+    }
+
+    return result;
 }
 
-// Hàm tìm giá trị nhỏ hơn giữa hai BigInt
-BigInt min(const BigInt &a, const BigInt &b) {
-    return (a < b) ? a : b;
+pair<BigInt, BigInt> divide(const BigInt &dividend, const BigInt &divisor)
+{
+    if (divisor.digit.empty() || (divisor.digit.size() == 1 && divisor.digit[0] == 0))
+    {
+        throw invalid_argument("Division by zero");
+    }
+
+    // Nếu dividend nhỏ hơn divisor, trả về thương = 0, dư = dividend
+    if (compare(dividend, divisor) < 0)
+    {
+        BigInt quotient;
+        quotient.sign = true;
+        quotient.digit.push_back(0);
+
+        BigInt remainder = dividend;
+
+        return make_pair(quotient, remainder);
+    }
+
+    BigInt quotient;
+    quotient.sign = (dividend.sign == divisor.sign);
+    quotient.digit.resize(dividend.digit.size(), 0);
+
+    BigInt remainder;
+    remainder.sign = dividend.sign;
+    remainder.digit = dividend.digit;
+
+    size_t shift = dividend.digit.size() - divisor.digit.size();
+    BigInt shiftedDivisor = divisor;
+
+    for (size_t i = 0; i < shift; ++i)
+    {
+        shiftedDivisor.digit.insert(shiftedDivisor.digit.begin(), 0);
+    }
+
+    for (size_t i = shift + 1; i-- > 0;)
+    {
+        uint32_t low = 0;
+        uint32_t high = BASE - 1;
+        uint32_t q = 0;
+
+        // Tìm q lớn nhất sao cho shiftedDivisor * q <= remainder
+        while (low <= high)
+        {
+            uint32_t mid = low + (high - low) / 2;
+
+            BigInt midBigInt;
+            midBigInt.sign = true;
+            midBigInt.digit.push_back(mid);
+
+            BigInt product = karatsubaMultiply(shiftedDivisor, midBigInt);
+            if (compare(product, remainder) <= 0)
+            {
+                q = mid;
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        quotient.digit[i] = q;
+
+        BigInt qBigInt;
+        qBigInt.sign = true;
+        qBigInt.digit.push_back(q);
+
+        BigInt product = karatsubaMultiply(shiftedDivisor, qBigInt);
+
+        remainder = subtract(remainder, product);
+
+        if (i > 0)
+        {
+            shiftedDivisor.digit.erase(shiftedDivisor.digit.begin());
+        }
+    }
+
+    while (quotient.digit.size() > 1 && quotient.digit.back() == 0)
+    {
+        quotient.digit.pop_back();
+    }
+
+    while (remainder.digit.size() > 1 && remainder.digit.back() == 0)
+    {
+        remainder.digit.pop_back();
+    }
+
+    return make_pair(quotient, remainder);
 }
 
-int main(int argc, char *argv[]) {
-    if (argc != 3) {
+BigInt mod(const BigInt &a, const BigInt &b)
+{
+    if (b.digit.empty() || (b.digit.size() == 1 && b.digit[0] == 0))
+    {
+        throw invalid_argument("Modulo by zero");
+    }
+
+    BigInt remainder = divide(a, b).second;
+
+    if (!remainder.sign)
+    {
+        remainder = add(remainder, b);
+    }
+
+    return remainder;
+}
+
+GCDResult extendedGCD(const BigInt &a, const BigInt &b)
+{
+    if (isZero(b))
+    {
+        GCDResult baseCaseResult;
+        baseCaseResult.gcd = a;
+        BigInt xValue;
+        xValue.sign = true;
+        xValue.digit.push_back(1);
+        baseCaseResult.x = xValue;
+
+        BigInt yValue;
+        yValue.sign = true;
+        yValue.digit.push_back(0);
+        baseCaseResult.y = yValue;
+
+        return baseCaseResult;
+    }
+
+    // Tính extended GCD của (b, a % b)
+    GCDResult recursiveResult = extendedGCD(b, mod(a, b));
+
+    // Lấy kết quả từ lời gọi đệ quy
+    BigInt gcd = recursiveResult.gcd;
+    BigInt x1 = recursiveResult.x;
+    BigInt y1 = recursiveResult.y;
+
+    BigInt quotient = divide(a, b).first;
+    BigInt x = y1;
+    BigInt y = subtract(x1, karatsubaMultiply(quotient, y1));
+
+    GCDResult result;
+    result.gcd = gcd;
+    result.x = x;
+    result.y = y;
+
+    return result;
+}
+
+BigInt modInverse(const BigInt &e, const BigInt &phi)
+{
+    GCDResult result = extendedGCD(e, phi);
+
+    if (!isOne(result.gcd))
+    {
+        throw invalid_argument("e and φ(N) are not coprime, no modular inverse exists.");
+    }
+
+    BigInt modInverse = mod(result.x, phi);
+
+    if (!modInverse.sign)
+    {
+        modInverse = add(modInverse, phi);
+    }
+
+    return modInverse;
+}
+
+string BigIntToHex(const BigInt &BigInt)
+{
+    if (BigInt.digit.empty())
+    {
+        return "0";
+    }
+
+    string hexString;
+
+    for (int i = BigInt.digit.size() - 1; i >= 0; --i)
+    {
+        stringstream ss;
+        ss << hex << uppercase << BigInt.digit[i];
+
+        string hexPart = ss.str();
+
+        if (i != BigInt.digit.size() - 1)
+        {
+            while (hexPart.length() < 9)
+            {
+                hexPart = "0" + hexPart;
+            }
+        }
+
+        hexString += hexPart;
+    }
+
+    size_t firstNonZero = hexString.find_first_not_of('0');
+    if (firstNonZero != string::npos)
+    {
+        hexString = hexString.substr(firstNonZero);
+    }
+    else
+    {
+        hexString = "0";
+    }
+
+    return hexString;
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 3)
+    {
         cerr << "Usage: " << argv[0] << " <input_file> <output_file>" << endl;
         return 1;
     }
@@ -582,56 +575,66 @@ int main(int argc, char *argv[]) {
     string inputFile = argv[1];
     string outputFile = argv[2];
 
-    // Đọc dữ liệu từ file input
     ifstream fin(inputFile);
-    if (!fin.is_open()) {
-        cerr << "Error: Unable to open input file." << endl;
+    if (!fin.is_open())
+    {
+        cerr << "Error: Unable to open input file: " << inputFile << endl;
         return 1;
     }
 
-    string pStr, qStr, eStr;
-    getline(fin, pStr);
-    getline(fin, qStr);
-    getline(fin, eStr);
+    string pHex, qHex, eHex;
+    getline(fin, pHex);
+    getline(fin, qHex);
+    getline(fin, eHex);
     fin.close();
 
-    // Chuyển chuỗi từ file input thành BigInt
-    BigInt p(pStr), q(qStr), e(eStr);
+    BigInt p = hexToInt(pHex);
+    BigInt q = hexToInt(qHex);
+    BigInt e = hexToInt(eHex);
 
-    // Kiểm tra điều kiện e < min(p, q)
-    BigInt one = 1;
-    BigInt pMinus1 = p - one;
-    BigInt qMinus1 = q - one;
-
-    if (e >= min(p, q)) {
+    if (compare(e, min(p, q)) >= 0)
+    {
+        cerr << "Error: e must be smaller than min(p, q)" << endl;
         ofstream fout(outputFile);
-        fout << "-1" << endl;
-        fout.close();
+        if (fout.is_open())
+        {
+            fout << "-1" << endl;
+            fout.close();
+        }
         return 1;
     }
 
-    // Tính phi(n) = (p - 1)(q - 1)
-    BigInt phi = pMinus1 * qMinus1;
+    BigInt one;
+    one.sign = true;
+    one.digit.push_back(1);
+    BigInt pMinus1 = subtract(p, one);
+    BigInt qMinus1 = subtract(q, one);
+    BigInt phi = karatsubaMultiply(pMinus1, qMinus1);
 
-    // Tính khóa bí mật d
-    try {
-        BigInt d = mod_inverse(e, phi); // Tính nghịch đảo modular của e theo phi(n)
+    try
+    {
+        BigInt d = modInverse(e, phi);
 
-        // Ghi kết quả vào file output
         ofstream fout(outputFile);
-        if (!fout.is_open()) {
-            cerr << "Error: Unable to open output file." << endl;
+        if (!fout.is_open())
+        {
+            cerr << "Error: Unable to open output file: " << outputFile << endl;
             return 1;
         }
 
-        fout << d << endl;
+        fout << BigIntToHex(d) << endl;
         fout.close();
-    } catch (const invalid_argument &ex) {
+    }
+    catch (const invalid_argument &ex)
+    {
         cerr << "Error: " << ex.what() << endl;
 
         ofstream fout(outputFile);
-        fout << "-1" << endl;
-        fout.close();
+        if (fout.is_open())
+        {
+            fout << "-1" << endl;
+            fout.close();
+        }
         return 1;
     }
 
