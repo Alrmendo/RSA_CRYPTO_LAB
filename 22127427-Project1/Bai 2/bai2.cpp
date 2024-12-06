@@ -1,12 +1,12 @@
 #include <iostream>
-#include <fstream>
-#include <algorithm>
-#include <vector>
 #include <string>
+#include <vector>
+#include <fstream>
+#include <sstream>
+#include <algorithm>
+#include <tuple>
 #include <iomanip>
 #include <stdexcept>
-#include <sstream>
-#include <tuple>
 
 using namespace std;
 
@@ -572,38 +572,44 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    string inputFile = argv[1];
-    string outputFile = argv[2];
+    // Lấy đường dẫn tệp đầu vào và đầu ra
+    string inputFilePath = argv[1];
+    string outputFilePath = argv[2];
 
-    ifstream fin(inputFile);
-    if (!fin.is_open())
+    // Mở tệp đầu vào
+    ifstream inputFile(inputFilePath);
+    if (!inputFile.is_open())
     {
-        cerr << "Error: Unable to open input file: " << inputFile << endl;
+        cerr << "Error: Unable to open input file: " << inputFilePath << endl;
         return 1;
     }
 
-    string pHex, qHex, eHex;
-    getline(fin, pHex);
-    getline(fin, qHex);
-    getline(fin, eHex);
-    fin.close();
+    // Đọc các giá trị hex từ tệp đầu vào
+    string pHexValue, qHexValue, eHexValue;
+    getline(inputFile, pHexValue);
+    getline(inputFile, qHexValue);
+    getline(inputFile, eHexValue);
+    inputFile.close();
 
-    BigInt p = hexToInt(pHex);
-    BigInt q = hexToInt(qHex);
-    BigInt e = hexToInt(eHex);
+    // Chuyển đổi giá trị hex sang BigInt
+    BigInt p = hexToInt(pHexValue);
+    BigInt q = hexToInt(qHexValue);
+    BigInt e = hexToInt(eHexValue);
 
+    // Kiểm tra điều kiện e < min(p, q)
     if (compare(e, min(p, q)) >= 0)
     {
         cerr << "Error: e must be smaller than min(p, q)" << endl;
-        ofstream fout(outputFile);
-        if (fout.is_open())
+        ofstream outputFile(outputFilePath);
+        if (outputFile.is_open())
         {
-            fout << "-1" << endl;
-            fout.close();
+            outputFile << "-1" << endl;
+            outputFile.close();
         }
         return 1;
     }
 
+    // Tính phi = (p - 1) * (q - 1)
     BigInt one;
     one.sign = true;
     one.digit.push_back(1);
@@ -613,27 +619,28 @@ int main(int argc, char *argv[])
 
     try
     {
+        // Tìm d sao cho d * e ≡ 1 (mod phi)
         BigInt d = modInverse(e, phi);
 
-        ofstream fout(outputFile);
-        if (!fout.is_open())
+        // Ghi d vào tệp đầu ra dưới dạng hex
+        ofstream outputFile(outputFilePath);
+        if (!outputFile.is_open())
         {
-            cerr << "Error: Unable to open output file: " << outputFile << endl;
+            cerr << "Error: Unable to open output file: " << outputFilePath << endl;
             return 1;
         }
 
-        fout << BigIntToHex(d) << endl;
-        fout.close();
+        outputFile << BigIntToHex(d) << endl;
+        outputFile.close();
     }
     catch (const invalid_argument &ex)
     {
         cerr << "Error: " << ex.what() << endl;
-
-        ofstream fout(outputFile);
-        if (fout.is_open())
+        ofstream outputFile(outputFilePath);
+        if (outputFile.is_open())
         {
-            fout << "-1" << endl;
-            fout.close();
+            outputFile << "-1" << endl;
+            outputFile.close();
         }
         return 1;
     }
