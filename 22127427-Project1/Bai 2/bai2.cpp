@@ -4,9 +4,9 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <stdexcept>
 #include <tuple>
 #include <iomanip>
-#include <stdexcept>
 
 using namespace std;
 
